@@ -102,8 +102,36 @@ class AutoHARCapture {
       exportNuclei: document.getElementById('exportNuclei'),
       exportOutput: document.getElementById('exportOutput'),
       copyExport: document.getElementById('copyExport'),
-      downloadExport: document.getElementById('downloadExport')
+      downloadExport: document.getElementById('downloadExport'),
+
+      // AI Export tab
+      aiExportBrief: document.getElementById('aiExportBrief'),
+      aiExportScenarios: document.getElementById('aiExportScenarios'),
+      aiExportOpenAPI: document.getElementById('aiExportOpenAPI'),
+      aiExportChunked: document.getElementById('aiExportChunked'),
+      categoryPills: document.getElementById('categoryPills'),
+      promptList: document.getElementById('promptList'),
+      aiPromptOutput: document.getElementById('aiPromptOutput'),
+      tokenCount: document.getElementById('tokenCount'),
+      aiCopyPrompt: document.getElementById('aiCopyPrompt'),
+      aiDownloadPrompt: document.getElementById('aiDownloadPrompt'),
+      aiEditPrompt: document.getElementById('aiEditPrompt'),
+      aiAddPrompt: document.getElementById('aiAddPrompt'),
+      promptModal: document.getElementById('promptModal'),
+      promptModalTitle: document.getElementById('promptModalTitle'),
+      promptName: document.getElementById('promptName'),
+      promptCategory: document.getElementById('promptCategory'),
+      promptDescription: document.getElementById('promptDescription'),
+      promptContent: document.getElementById('promptContent'),
+      promptModalCancel: document.getElementById('promptModalCancel'),
+      promptModalSave: document.getElementById('promptModalSave')
     };
+
+    // AI Export manager
+    this.aiExportManager = new AIExportManager(this.securityAnalyzer);
+    this.openAPIGenerator = new OpenAPIGenerator();
+    this.selectedPromptId = null;
+    this.editingPromptId = null;
   }
 
   async loadSettings() {
@@ -212,6 +240,38 @@ class AutoHARCapture {
     this.elements.copyExport.addEventListener('click', () => this.copyExportToClipboard());
     this.elements.downloadExport.addEventListener('click', () => this.downloadExport());
 
+    // AI Export buttons
+    this.elements.aiExportBrief.addEventListener('click', () => this.aiDoExport('brief'));
+    this.elements.aiExportScenarios.addEventListener('click', () => this.aiDoExport('scenarios'));
+    this.elements.aiExportOpenAPI.addEventListener('click', () => this.aiDoExport('openapi'));
+    this.elements.aiExportChunked.addEventListener('click', () => this.aiDoExport('chunked'));
+
+    // Category pills
+    this.elements.categoryPills.addEventListener('click', (e) => {
+      if (e.target.classList.contains('category-pill')) {
+        this.elements.categoryPills.querySelectorAll('.category-pill').forEach(p => p.classList.remove('active'));
+        e.target.classList.add('active');
+        this.renderPromptList(e.target.dataset.category);
+      }
+    });
+
+    // AI prompt actions
+    this.elements.aiCopyPrompt.addEventListener('click', () => this.aiCopyPrompt());
+    this.elements.aiDownloadPrompt.addEventListener('click', () => this.aiDownloadPrompt());
+    this.elements.aiEditPrompt.addEventListener('click', () => this.aiEditCurrentPrompt());
+    this.elements.aiAddPrompt.addEventListener('click', () => this.aiShowPromptModal());
+
+    // Prompt modal
+    this.elements.promptModalCancel.addEventListener('click', () => this.aiHidePromptModal());
+    this.elements.promptModalSave.addEventListener('click', () => this.aiSavePrompt());
+
+    // Close modal on overlay click
+    this.elements.promptModal.addEventListener('click', (e) => {
+      if (e.target === this.elements.promptModal) {
+        this.aiHidePromptModal();
+      }
+    });
+
     // Network listener
     if (browser.devtools.network.onRequestFinished) {
       browser.devtools.network.onRequestFinished.addListener((request) => {
@@ -247,6 +307,19 @@ class AutoHARCapture {
       this.renderEndpoints();
     } else if (tabName === 'security') {
       this.renderFindings();
+    } else if (tabName === 'ai') {
+      this.renderPromptList('all');
+      this.updateAITarget();
+    }
+  }
+
+  updateAITarget() {
+    // Set target from first request or inspected window
+    if (this.requests.length > 0) {
+      try {
+        const url = new URL(this.requests[0].request.url);
+        this.aiExportManager.setTarget(url.origin);
+      } catch (e) {}
     }
   }
 
@@ -799,6 +872,255 @@ class AutoHARCapture {
     while (this.elements.logContainer.children.length > 50) {
       this.elements.logContainer.removeChild(this.elements.logContainer.lastChild);
     }
+  }
+
+  // ========== AI Export Methods ==========
+
+  aiDoExport(type) {
+    this.updateAITarget();
+    let content = '';
+    let filename = '';
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+
+    switch (type) {
+      case 'brief':
+        content = this.aiExportManager.generateAIBrief();
+        filename = `ai-brief-${timestamp}.md`;
+        break;
+      case 'scenarios':
+        content = this.aiExportManager.generateAttackScenarios();
+        filename = `attack-scenarios-${timestamp}.md`;
+        break;
+      case 'openapi':
+        const endpoints = this.securityAnalyzer.getEndpoints();
+        this.openAPIGenerator.generate(endpoints);
+        content = this.openAPIGenerator.generateWithComments(endpoints);
+        filename = `openapi-${timestamp}.yaml`;
+        break;
+      case 'chunked':
+        const chunks = this.aiExportManager.generateChunkedExport();
+        content = chunks.map(c => `# ${c.title}\n\n${c.content}`).join('\n\n---\n\n');
+        filename = `chunked-export-${timestamp}.md`;
+        break;
+    }
+
+    this.currentAIExport = { content, filename };
+    this.elements.aiPromptOutput.value = content;
+    this.updateTokenCount(content);
+    this.selectedPromptId = null;
+    this.log(`AI Export ${type} généré`, 'success');
+  }
+
+  renderPromptList(category = 'all') {
+    const store = this.aiExportManager.promptStore;
+    let prompts = category === 'all' ? store.getAll() : store.getByCategory(category);
+
+    if (prompts.length === 0) {
+      this.elements.promptList.innerHTML = `
+        <div class="empty-state" style="padding:20px">
+          <div>Aucun prompt dans cette catégorie</div>
+        </div>
+      `;
+      return;
+    }
+
+    const categoryIcons = {
+      recon: '🔍', idor: '🎯', auth: '🔐', secrets: '🔑',
+      api: '🌐', offensive: '⚔️', reporting: '📝', custom: '✏️',
+      prioritization: '📊'
+    };
+
+    this.elements.promptList.innerHTML = prompts.map(p => `
+      <div class="prompt-item ${p.isDefault ? 'default' : ''} ${this.selectedPromptId === p.id ? 'selected' : ''}"
+           data-id="${p.id}">
+        <div class="prompt-icon">${categoryIcons[p.category] || '📄'}</div>
+        <div class="prompt-info">
+          <div class="prompt-name">${p.name}</div>
+          <div class="prompt-desc">${p.description || ''}</div>
+        </div>
+        <div class="prompt-actions">
+          ${!p.isDefault ? `<button class="prompt-action-btn" data-action="delete" title="Supprimer">🗑️</button>` : ''}
+          <button class="prompt-action-btn" data-action="copy" title="Copier">📋</button>
+        </div>
+      </div>
+    `).join('');
+
+    // Bind click events
+    this.elements.promptList.querySelectorAll('.prompt-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        const action = e.target.closest('[data-action]')?.dataset.action;
+        const id = item.dataset.id;
+
+        if (action === 'delete') {
+          this.aiDeletePrompt(id);
+        } else if (action === 'copy') {
+          this.aiSelectAndCopyPrompt(id);
+        } else {
+          this.aiSelectPrompt(id);
+        }
+      });
+    });
+  }
+
+  aiSelectPrompt(id) {
+    this.selectedPromptId = id;
+    this.updateAITarget();
+
+    const rendered = this.aiExportManager.getRenderedPrompt(id);
+    if (rendered) {
+      this.elements.aiPromptOutput.value = rendered.renderedPrompt;
+      this.currentAIExport = {
+        content: rendered.renderedPrompt,
+        filename: `prompt-${rendered.name.toLowerCase().replace(/\s+/g, '-')}.md`
+      };
+      this.updateTokenCount(rendered.renderedPrompt);
+    }
+
+    // Update UI selection
+    this.elements.promptList.querySelectorAll('.prompt-item').forEach(item => {
+      item.classList.toggle('selected', item.dataset.id === id);
+    });
+  }
+
+  async aiSelectAndCopyPrompt(id) {
+    this.aiSelectPrompt(id);
+    await this.aiCopyPrompt();
+  }
+
+  async aiCopyPrompt() {
+    const content = this.elements.aiPromptOutput.value;
+    if (!content) {
+      this.log('Rien à copier', 'error');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(content);
+      this.log('Prompt copié dans le presse-papier', 'success');
+    } catch (e) {
+      // Fallback
+      const textarea = document.createElement('textarea');
+      textarea.value = content;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      this.log('Prompt copié', 'success');
+    }
+  }
+
+  aiDownloadPrompt() {
+    const content = this.elements.aiPromptOutput.value;
+    if (!content) {
+      this.log('Rien à télécharger', 'error');
+      return;
+    }
+
+    const filename = this.currentAIExport?.filename || 'prompt.md';
+    this.securityAnalyzer.download(content, filename, 'text/markdown');
+    this.log(`Téléchargé: ${filename}`, 'success');
+  }
+
+  aiDeletePrompt(id) {
+    const store = this.aiExportManager.promptStore;
+    const prompt = store.getById(id);
+
+    if (prompt?.isDefault) {
+      this.log('Impossible de supprimer un prompt par défaut', 'error');
+      return;
+    }
+
+    if (confirm(`Supprimer le prompt "${prompt?.name}" ?`)) {
+      store.delete(id);
+      this.renderPromptList(this.getActiveCategory());
+      this.log('Prompt supprimé', 'success');
+    }
+  }
+
+  aiEditCurrentPrompt() {
+    if (!this.selectedPromptId) {
+      // Create new prompt with current content
+      this.aiShowPromptModal();
+      this.elements.promptContent.value = this.elements.aiPromptOutput.value;
+      return;
+    }
+
+    const prompt = this.aiExportManager.promptStore.getById(this.selectedPromptId);
+    if (prompt) {
+      this.aiShowPromptModal(prompt);
+    }
+  }
+
+  aiShowPromptModal(existingPrompt = null) {
+    this.editingPromptId = existingPrompt?.id || null;
+
+    this.elements.promptModalTitle.textContent = existingPrompt ? 'Modifier le Prompt' : 'Nouveau Prompt';
+    this.elements.promptName.value = existingPrompt?.name || '';
+    this.elements.promptCategory.value = existingPrompt?.category || 'custom';
+    this.elements.promptDescription.value = existingPrompt?.description || '';
+    this.elements.promptContent.value = existingPrompt?.prompt || '';
+
+    this.elements.promptModal.classList.add('active');
+  }
+
+  aiHidePromptModal() {
+    this.elements.promptModal.classList.remove('active');
+    this.editingPromptId = null;
+  }
+
+  aiSavePrompt() {
+    const store = this.aiExportManager.promptStore;
+    const promptData = {
+      name: this.elements.promptName.value.trim(),
+      category: this.elements.promptCategory.value,
+      description: this.elements.promptDescription.value.trim(),
+      prompt: this.elements.promptContent.value.trim()
+    };
+
+    const validation = store.validate(promptData);
+    if (!validation.valid) {
+      this.log(validation.errors[0], 'error');
+      return;
+    }
+
+    if (this.editingPromptId) {
+      store.update(this.editingPromptId, promptData);
+      this.log('Prompt mis à jour', 'success');
+    } else {
+      const newPrompt = store.add(promptData);
+      this.selectedPromptId = newPrompt.id;
+      this.log('Prompt créé', 'success');
+    }
+
+    this.aiHidePromptModal();
+    this.renderPromptList(this.getActiveCategory());
+  }
+
+  getActiveCategory() {
+    const active = this.elements.categoryPills.querySelector('.category-pill.active');
+    return active?.dataset.category || 'all';
+  }
+
+  updateTokenCount(content) {
+    // Rough estimation: 1 token ~= 4 characters
+    const tokens = Math.ceil(content.length / 4);
+    let display = '';
+
+    if (tokens < 1000) {
+      display = `~${tokens} tokens`;
+    } else {
+      display = `~${(tokens / 1000).toFixed(1)}k tokens`;
+    }
+
+    // Add warning if over context limits
+    if (tokens > 100000) {
+      display += ' ⚠️ Très long';
+    } else if (tokens > 30000) {
+      display += ' ⚠️ Long';
+    }
+
+    this.elements.tokenCount.textContent = display;
   }
 }
 
