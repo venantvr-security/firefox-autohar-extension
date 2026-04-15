@@ -147,6 +147,12 @@ graph TB
                 SF[SmartFilters]
                 EM[ExportManager]
             end
+
+            subgraph AI Modules
+                AEM[AIExportManager]
+                PTS[PromptTemplateStore]
+                OAG[OpenAPIGenerator]
+            end
         end
 
         subgraph Popup
@@ -166,6 +172,10 @@ graph TB
     SA --> RT
     SA --> SF
     SA --> EM
+    P --> AEM
+    AEM --> PTS
+    AEM --> OAG
+    AEM --> SA
     BG <--> P
     BG <--> PP
 ```
@@ -222,6 +232,50 @@ flowchart LR
     J --> L[🐛 Vulns]
     K --> L
     G --> L
+```
+
+## Workflow AI Export
+
+```mermaid
+flowchart LR
+    subgraph Capture
+        HAR[Données HAR]
+        SEC[Security Findings]
+        EP[Endpoints]
+    end
+
+    subgraph AI Export
+        BRIEF[📋 AI Brief]
+        SCEN[⚔️ Scénarios]
+        OAPI[📄 OpenAPI]
+        CHUNK[📦 Chunked]
+    end
+
+    subgraph Prompts
+        PTS[(LocalStorage)]
+        DEF[8 Prompts Défaut]
+        CUST[Prompts Custom]
+    end
+
+    HAR --> BRIEF
+    SEC --> BRIEF
+    EP --> BRIEF
+
+    SEC --> SCEN
+    EP --> OAPI
+
+    BRIEF --> CHUNK
+
+    DEF --> PTS
+    CUST --> PTS
+    PTS --> |Variables| RENDER[Rendu Prompt]
+
+    RENDER --> COPY[📋 Copier]
+    RENDER --> DL[💾 Télécharger]
+
+    COPY --> AI[🤖 IA]
+    BRIEF --> AI
+    SCEN --> AI
 ```
 
 ## Pipeline d'analyse
