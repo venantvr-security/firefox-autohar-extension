@@ -177,6 +177,11 @@ class SecretDetector {
     }));
   }
 
+  // Alias pour compatibilité tests
+  detectInText(value, location, context = '') {
+    return this.scanValue(value, location, context);
+  }
+
   // Scanner une valeur pour tous les patterns
   scanValue(value, location, context = '') {
     if (!value || typeof value !== 'string') return [];

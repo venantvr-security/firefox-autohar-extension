@@ -86,14 +86,14 @@ class EndpointExtractor {
 
   normalizePath(path) {
     return path
-      // IDs numeriques
-      .replace(/\/\d+/g, '/{id}')
-      // UUIDs
+      // UUIDs (must run BEFORE numeric IDs)
       .replace(/\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/gi, '/{uuid}')
-      // MongoDB ObjectIds
+      // MongoDB ObjectIds (24 hex chars, must run BEFORE numeric IDs)
       .replace(/\/[a-f0-9]{24}/gi, '/{objectId}')
-      // Hashes MD5
+      // Hashes MD5 (32 hex chars)
       .replace(/\/[a-f0-9]{32}/gi, '/{hash}')
+      // IDs numeriques (run AFTER longer patterns)
+      .replace(/\/\d+/g, '/{id}')
       // Slugs avec IDs
       .replace(/-\d+-/g, '-{id}-')
       // Trailing slashes
