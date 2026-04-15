@@ -30,6 +30,14 @@ Extension Firefox pour la capture et l'analyse de sécurité du trafic réseau e
 - **Markdown report** : Rapport de sécurité complet
 - **Nuclei templates** : Templates YAML pour IDOR
 
+### AI Export (Nouveau)
+- **AI Brief** : Résumé structuré optimisé pour analyse IA
+- **Scénarios d'attaque** : Scénarios générés depuis les findings
+- **OpenAPI Spec** : Reconstruction automatique de la spécification API
+- **Export Chunked** : Données découpées pour contextes IA limités
+- **8 prompts par défaut** : Recon, IDOR, JWT, Secrets, API, Offensive, Reporting, Quick Wins
+- **Prompts personnalisés** : Stockage LocalStorage, variables dynamiques
+
 ## Installation
 
 ### Méthode 1 : Installation temporaire (développement)
@@ -84,6 +92,12 @@ Puis `about:addons` -> Icône engrenage -> "Installer un module depuis un fichie
 - Copy to clipboard
 - Download direct
 
+### AI Export
+- Quick exports (Brief, Scénarios, OpenAPI, Chunked)
+- Prompts par catégorie avec variables dynamiques
+- Preview avec estimation de tokens
+- Gestion des prompts personnalisés
+
 ## Détection de Secrets
 
 | Type | Pattern | Sévérité |
@@ -95,6 +109,20 @@ Puis `about:addons` -> Icône engrenage -> "Installer un module depuis un fichie
 | GitHub Token | `ghp_...` | Critical |
 | Bearer Token | `Bearer ...` | High |
 | Private Key | `-----BEGIN...` | Critical |
+
+## Variables AI Prompts
+
+| Variable | Description |
+|----------|-------------|
+| `{{target}}` | Domaine principal ciblé |
+| `{{endpoints}}` | Liste des endpoints découverts |
+| `{{secrets}}` | Secrets détectés (masqués) |
+| `{{jwt_decoded}}` | JWT décodés avec claims |
+| `{{idor_candidates}}` | Endpoints candidats IDOR |
+| `{{security_issues}}` | Problèmes de sécurité |
+| `{{parameters}}` | Paramètres uniques (query/body) |
+| `{{auth_endpoints}}` | Endpoints d'authentification |
+| `{{request_count}}` | Nombre de requêtes capturées |
 
 ## Architecture
 
