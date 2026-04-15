@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>PentestHAR</title>
+  <style>
+    :root {
+      --bg-primary: #1e1e1e;
+      --bg-secondary: #2d2d2d;
+      --bg-tertiary: #3d3d3d;
+      --text-primary: #e0e0e0;
+      --text-secondary: #a0a0a0;
+      --accent: #0d6efd;
+      --success: #198754;
+      --warning: #ffc107;
+      --danger: #dc3545;
+      --border: #444;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 12px;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      padding: 12px;
+      min-height: 100vh;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header h1 small {
+      font-size: 10px;
+      color: var(--text-secondary);
+      font-weight: 400;
+    }
+
+    .status-indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--danger);
+      animation: pulse 2s infinite;
+    }
+
+    .status-indicator.recording {
+      background: var(--success);
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+    }
+
+    button {
+      padding: 6px 12px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    button:hover:not(:disabled) {
+      filter: brightness(1.1);
+    }
+
+    button:active:not(:disabled) {
+      transform: scale(0.98);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-success { background: var(--success); color: white; }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-warning { background: var(--warning); color: #1e1e1e; }
+    .btn-secondary {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+
+    /* Tab System */
+    .tab-container {
+      margin-bottom: 16px;
+    }
+
+    .tab-buttons {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 12px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 10px 12px;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 500;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-primary);
+      background: var(--bg-secondary);
+    }
+
+    .tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .tab-btn .badge {
+      background: var(--danger);
+      color: white;
+      font-size: 9px;
+      padding: 2px 5px;
+      border-radius: 8px;
+      min-width: 18px;
+      text-align: center;
+    }
+
+    .tab-btn .badge.warning { background: var(--warning); color: #1e1e1e; }
+    .tab-btn .badge.success { background: var(--success); }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .stats-grid.four-cols {
+      grid-template-columns: repeat(4, 1fr);
+    }
+
+    .stat-card {
+      background: var(--bg-secondary);
+      border-radius: 6px;
+      padding: 12px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .stat-value.warning { color: var(--warning); }
+    .stat-value.danger { color: var(--danger); }
+    .stat-value.success { color: var(--success); }
+
+    .stat-label {
+      font-size: 10px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 4px;
+    }
+
+    /* Progress */
+    .progress-section { margin-bottom: 16px; }
+
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      font-size: 11px;
+    }
+
+    .progress-bar {
+      height: 8px;
+      background: var(--bg-tertiary);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--success);
+      transition: width 0.3s, background 0.3s;
+      border-radius: 4px;
+    }
+
+    .progress-fill.warning { background: var(--warning); }
+    .progress-fill.danger { background: var(--danger); }
+
+    /* Settings */
+    .settings-inline {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      padding: 12px;
+      background: var(--bg-secondary);
+      border-radius: 6px;
+    }
+
+    .settings-inline label {
+      font-size: 11px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .settings-inline input[type="number"],
+    .settings-inline input[type="text"] {
+      width: 60px;
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      font-size: 12px;
+    }
+
+    .settings-inline input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      cursor: pointer;
+    }
+
+    /* Domain Filter */
+    .domain-filter { margin-bottom: 16px; }
+
+    .domain-filter input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      font-size: 12px;
+    }
+
+    .domain-filter input::placeholder { color: var(--text-secondary); }
+
+    /* Log Section */
+    .log-section {
+      background: var(--bg-secondary);
+      border-radius: 6px;
+      padding: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .log-section h3 {
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .log-entry {
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 10px;
+      padding: 4px 0;
+      border-bottom: 1px solid var(--bg-tertiary);
+      display: flex;
+      gap: 8px;
+    }
+
+    .log-entry:last-child { border-bottom: none; }
+    .log-time { color: var(--text-secondary); min-width: 70px; }
+    .log-message { color: var(--text-primary); }
+    .log-message.success { color: var(--success); }
+    .log-message.error { color: var(--danger); }
+    .log-message.warning { color: var(--warning); }
+
+    /* Saved Files */
+    .saved-files { margin-top: 16px; }
+
+    .saved-file {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px;
+      background: var(--bg-secondary);
+      border-radius: 4px;
+      margin-bottom: 4px;
+      font-size: 11px;
+    }
+
+    .saved-file-name { font-family: monospace; color: var(--accent); }
+    .saved-file-size { color: var(--text-secondary); }
+
+    /* Tags */
+    .tag {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-size: 9px;
+      font-weight: 500;
+      margin-right: 4px;
+    }
+
+    .tag.auth { background: #7c3aed20; color: #8b5cf6; }
+    .tag.api { background: #2563eb20; color: #3b82f6; }
+    .tag.sensitive { background: #dc354520; color: #ef4444; }
+    .tag.idor { background: #f59e0b20; color: #f59e0b; }
+    .tag.admin { background: #ec489920; color: #ec4899; }
+    .tag.error { background: #dc354520; color: #dc3545; }
+    .tag.upload { background: #22c55e20; color: #22c55e; }
+
+    /* Findings */
+    .findings-summary {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .finding-stat {
+      background: var(--bg-secondary);
+      padding: 12px;
+      border-radius: 6px;
+      text-align: center;
+    }
+
+    .finding-count {
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .finding-count.critical { color: #dc2626; }
+    .finding-count.high { color: #ea580c; }
+    .finding-count.medium { color: #f59e0b; }
+    .finding-count.safe { color: var(--success); }
+
+    .finding-label {
+      font-size: 9px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    .findings-list {
+      max-height: 350px;
+      overflow-y: auto;
+    }
+
+    .finding-item {
+      background: var(--bg-secondary);
+      border-radius: 4px;
+      padding: 10px;
+      margin-bottom: 8px;
+      border-left: 3px solid var(--warning);
+    }
+
+    .finding-item.critical { border-left-color: #dc2626; }
+    .finding-item.high { border-left-color: #ea580c; }
+    .finding-item.medium { border-left-color: #f59e0b; }
+    .finding-item.low { border-left-color: #3b82f6; }
+
+    .finding-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .finding-type {
+      font-weight: 600;
+      font-size: 11px;
+      color: var(--text-primary);
+    }
+
+    .finding-severity {
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .finding-detail {
+      font-family: monospace;
+      font-size: 10px;
+      color: var(--text-secondary);
+      word-break: break-all;
+    }
+
+    .finding-url {
+      font-size: 9px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* JWT Info */
+    .jwt-info {
+      background: var(--bg-tertiary);
+      padding: 8px;
+      border-radius: 4px;
+      margin-top: 8px;
+      font-size: 10px;
+    }
+
+    .jwt-info .jwt-row { margin-bottom: 4px; }
+    .jwt-info .expired { color: var(--danger); }
+
+    /* Endpoints List */
+    .endpoints-toolbar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .endpoints-toolbar input[type="text"] {
+      flex: 1;
+      min-width: 150px;
+      padding: 6px 10px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-primary);
+      font-size: 11px;
+    }
+
+    .endpoints-toolbar select {
+      padding: 6px 10px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-primary);
+      font-size: 11px;
+    }
+
+    .endpoints-list {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .endpoint-item {
+      display: flex;
+      align-items: center;
+      padding: 8px;
+      background: var(--bg-secondary);
+      border-radius: 4px;
+      margin-bottom: 4px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .endpoint-item:hover { background: var(--bg-tertiary); }
+
+    .endpoint-method {
+      min-width: 55px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      text-align: center;
+      margin-right: 10px;
+    }
+
+    .endpoint-method.GET { background: #2563eb20; color: #3b82f6; }
+    .endpoint-method.POST { background: #16a34a20; color: #22c55e; }
+    .endpoint-method.PUT { background: #d9730620; color: #f59e0b; }
+    .endpoint-method.DELETE { background: #dc354520; color: #ef4444; }
+    .endpoint-method.PATCH { background: #7c3aed20; color: #8b5cf6; }
+
+    .endpoint-path {
+      flex: 1;
+      font-family: monospace;
+      font-size: 11px;
+      color: var(--text-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .endpoint-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 10px;
+      color: var(--text-secondary);
+    }
+
+    .endpoint-count {
+      background: var(--bg-tertiary);
+      padding: 2px 6px;
+      border-radius: 10px;
+    }
+
+    .idor-indicator {
+      color: var(--warning);
+      font-weight: 600;
+    }
+
+    /* Export Section */
+    .export-section {
+      margin-bottom: 16px;
+      padding: 12px;
+      background: var(--bg-secondary);
+      border-radius: 6px;
+    }
+
+    .export-section h3 {
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .export-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .export-preview {
+      margin-top: 16px;
+    }
+
+    .export-preview textarea {
+      width: 100%;
+      height: 200px;
+      padding: 10px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-primary);
+      font-family: monospace;
+      font-size: 11px;
+      resize: vertical;
+    }
+
+    .export-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    /* Smart Filters Section */
+    .smart-filters {
+      padding: 12px;
+      background: var(--bg-secondary);
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+
+    .smart-filters h3 {
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .filter-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 8px;
+    }
+
+    .filter-grid label {
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-secondary);
+    }
+
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-secondary);
+    }
+
+    .empty-state-icon {
+      font-size: 32px;
+      margin-bottom: 12px;
+      opacity: 0.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>
+      <span class="status-indicator" id="statusIndicator"></span>
+      PentestHAR
+    </h1>
+    <div class="controls">
+      <button id="btnToggle" class="btn-success">Start</button>
+      <button id="btnSaveNow" class="btn-primary">Save HAR</button>
+      <button id="btnClear" class="btn-secondary">Clear</button>
+    </div>
+  </div>
+
+  <!-- Tab Navigation -->
+  <div class="tab-container">
+    <div class="tab-buttons">
+      <button class="tab-btn active" data-tab="capture">Capture</button>
+      <button class="tab-btn" data-tab="security">
+        Security <span class="badge" id="securityBadge" style="display:none">0</span>
+      </button>
+      <button class="tab-btn" data-tab="endpoints">
+        Endpoints <span class="badge success" id="endpointsBadge" style="display:none">0</span>
+      </button>
+      <button class="tab-btn" data-tab="export">Export</button>
+    </div>
+  </div>
+
+  <!-- Capture Tab -->
+  <div class="tab-content active" id="captureTab">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="requestCount">0</div>
+        <div class="stat-label">Requests</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="currentSize">0</div>
+        <div class="stat-label">Size (MB)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="savedCount">0</div>
+        <div class="stat-label">Saved</div>
+      </div>
+    </div>
+
+    <div class="progress-section">
+      <div class="progress-header">
+        <span>Buffer</span>
+        <span id="progressText">0 / 5 MB</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <div class="settings-inline">
+      <label>
+        <input type="checkbox" id="autoSave" checked> Auto-save
+      </label>
+      <label>
+        Seuil: <input type="number" id="maxSize" value="5" min="1" max="100"> MB
+      </label>
+      <label>
+        <input type="checkbox" id="includeResponses" checked> Response bodies
+      </label>
+    </div>
+
+    <div class="smart-filters">
+      <h3>Smart Filters</h3>
+      <div class="filter-grid">
+        <label><input type="checkbox" id="filterStatic" checked> Ignore static</label>
+        <label><input type="checkbox" id="filterApiOnly"> API only</label>
+        <label><input type="checkbox" id="filterThirdParty"> Exclude 3rd party</label>
+        <label><input type="checkbox" id="filterDedupe" checked> Deduplicate</label>
+      </div>
+    </div>
+
+    <div class="domain-filter">
+      <input type="text" id="domainFilter" placeholder="Filter by domain (e.g., api.example.com)">
+    </div>
+
+    <div class="log-section">
+      <h3>Activity Log</h3>
+      <div id="logContainer"></div>
+    </div>
+
+    <div class="saved-files" id="savedFiles"></div>
+  </div>
+
+  <!-- Security Tab -->
+  <div class="tab-content" id="securityTab">
+    <div class="findings-summary">
+      <div class="finding-stat">
+        <div class="finding-count critical" id="criticalCount">0</div>
+        <div class="finding-label">Critical</div>
+      </div>
+      <div class="finding-stat">
+        <div class="finding-count high" id="highCount">0</div>
+        <div class="finding-label">High</div>
+      </div>
+      <div class="finding-stat">
+        <div class="finding-count medium" id="mediumCount">0</div>
+        <div class="finding-label">Medium</div>
+      </div>
+      <div class="finding-stat">
+        <div class="finding-count safe" id="secretsCount">0</div>
+        <div class="finding-label">Secrets</div>
+      </div>
+    </div>
+
+    <div class="findings-list" id="findingsList">
+      <div class="empty-state">
+        <div class="empty-state-icon">🔒</div>
+        <div>No security findings yet</div>
+        <div style="font-size:10px;margin-top:8px">Start capturing to analyze security issues</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Endpoints Tab -->
+  <div class="tab-content" id="endpointsTab">
+    <div class="endpoints-toolbar">
+      <input type="text" id="endpointSearch" placeholder="Search endpoints...">
+      <select id="methodFilter">
+        <option value="">All Methods</option>
+        <option value="GET">GET</option>
+        <option value="POST">POST</option>
+        <option value="PUT">PUT</option>
+        <option value="DELETE">DELETE</option>
+        <option value="PATCH">PATCH</option>
+      </select>
+      <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-secondary)">
+        <input type="checkbox" id="showIdorOnly"> IDOR only
+      </label>
+    </div>
+
+    <div class="stats-grid four-cols" style="margin-bottom:12px">
+      <div class="stat-card">
+        <div class="stat-value" id="endpointsTotal">0</div>
+        <div class="stat-label">Endpoints</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="paramsTotal">0</div>
+        <div class="stat-label">Parameters</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value warning" id="idorTotal">0</div>
+        <div class="stat-label">IDOR Candidates</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="jsEndpointsTotal">0</div>
+        <div class="stat-label">JS Endpoints</div>
+      </div>
+    </div>
+
+    <div class="endpoints-list" id="endpointsList">
+      <div class="empty-state">
+        <div class="empty-state-icon">🌐</div>
+        <div>No endpoints captured yet</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export Tab -->
+  <div class="tab-content" id="exportTab">
+    <div class="export-section">
+      <h3>Endpoints Export</h3>
+      <div class="export-options">
+        <button class="btn-secondary" id="exportFfuf">ffuf wordlist</button>
+        <button class="btn-secondary" id="exportPostman">Postman</button>
+        <button class="btn-secondary" id="exportCurl">curl commands</button>
+        <button class="btn-secondary" id="exportParams">Param wordlist</button>
+      </div>
+    </div>
+
+    <div class="export-section">
+      <h3>Security Report</h3>
+      <div class="export-options">
+        <button class="btn-primary" id="exportMarkdown">Markdown Report</button>
+        <button class="btn-secondary" id="exportJSON">JSON Data</button>
+        <button class="btn-secondary" id="exportNuclei">Nuclei Templates</button>
+      </div>
+    </div>
+
+    <div class="export-preview">
+      <textarea id="exportOutput" readonly placeholder="Export output will appear here..."></textarea>
+      <div class="export-actions">
+        <button class="btn-primary" id="copyExport">Copy to Clipboard</button>
+        <button class="btn-secondary" id="downloadExport">Download</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load security modules -->
+  <script src="security/SmartFilters.js"></script>
+  <script src="security/RequestDeduplicator.js"></script>
+  <script src="security/RequestTagger.js"></script>
+  <script src="security/SecretDetector.js"></script>
+  <script src="security/SecurityHeaderChecker.js"></script>
+  <script src="security/EndpointExtractor.js"></script>
+  <script src="security/ExportManager.js"></script>
+  <script src="security/SecurityAnalyzer.js"></script>
+  <script src="panel.js"></script>
+</body>
+</html>

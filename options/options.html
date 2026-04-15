@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>AutoHAR - Paramètres</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+      color: #333;
+    }
+
+    h1 {
+      font-size: 24px;
+      margin-bottom: 24px;
+      color: #0d6efd;
+    }
+
+    .section {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .section h2 {
+      font-size: 16px;
+      margin: 0 0 16px 0;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #eee;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+
+    input[type="number"],
+    input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+    }
+
+    .help-text {
+      font-size: 12px;
+      color: #666;
+      margin-top: 4px;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background: #0d6efd;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #0b5ed7;
+    }
+
+    .btn-secondary {
+      background: #6c757d;
+      color: white;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 12px;
+      flex-direction: column;
+      margin-bottom: 20px;
+    }
+
+    .button-group .btn {
+      width: 100%;
+    }
+
+    .saved-message {
+      display: none;
+      padding: 12px;
+      background: #d4edda;
+      color: #155724;
+      border-radius: 4px;
+      margin-top: 16px;
+    }
+
+    .saved-message.show {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <h1>AutoHAR - Paramètres</h1>
+
+  <div class="section">
+    <h2>Capture</h2>
+
+    <div class="form-group">
+      <label for="maxSize">Taille maximale avant sauvegarde automatique (MB)</label>
+      <input type="number" id="maxSize" min="1" max="100" value="5">
+      <p class="help-text">Le fichier HAR sera sauvegardé automatiquement quand cette taille est atteinte</p>
+    </div>
+
+    <div class="form-group">
+      <label class="checkbox-label">
+        <input type="checkbox" id="autoStart" checked>
+        Démarrer automatiquement à l'ouverture des DevTools
+      </label>
+    </div>
+
+    <div class="form-group">
+      <label class="checkbox-label">
+        <input type="checkbox" id="includeResponses" checked>
+        Inclure le contenu des réponses
+      </label>
+      <p class="help-text">Désactiver pour réduire la taille des fichiers HAR</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Sauvegarde</h2>
+
+    <div class="form-group">
+      <label for="saveLocation">Dossier de sauvegarde</label>
+      <input type="text" id="saveLocation" value="autohar" placeholder="autohar">
+      <p class="help-text">Les fichiers seront sauvegardés dans le dossier Téléchargements/[ce dossier]</p>
+    </div>
+
+    <div class="form-group">
+      <label class="checkbox-label">
+        <input type="checkbox" id="includeTimestamp" checked>
+        Inclure la date/heure dans le nom du fichier
+      </label>
+    </div>
+
+    <div class="form-group">
+      <label class="checkbox-label">
+        <input type="checkbox" id="notifyOnSave" checked>
+        Afficher une notification lors de la sauvegarde
+      </label>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Navigation privée</h2>
+    <p class="help-text">
+      Cette extension fonctionne en navigation privée.<br>
+      Pour l'activer: Menu Firefox → Extensions → AutoHAR → ... → Autoriser en navigation privée
+    </p>
+  </div>
+
+  <div class="button-group">
+    <button class="btn btn-primary" id="save">Sauvegarder</button>
+    <button class="btn btn-secondary" id="reset">Réinitialiser</button>
+  </div>
+
+  <div class="saved-message" id="savedMessage">
+    Paramètres sauvegardés !
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

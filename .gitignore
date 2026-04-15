@@ -1,0 +1,17 @@
+# Build artifacts
+*.xpi
+*.zip
+web-ext-artifacts/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
