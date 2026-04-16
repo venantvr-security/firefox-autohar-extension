@@ -12,12 +12,22 @@ class SecurityAnalyzer {
     this.endpointExtractor = new EndpointExtractor();
     this.exportManager = new ExportManager();
 
+    // Nouveaux modules de détection avancée
+    this.injectionDetector = typeof InjectionDetector !== 'undefined'
+      ? new InjectionDetector()
+      : null;
+    this.jwtAnalyzer = typeof JWTAnalyzer !== 'undefined'
+      ? new JWTAnalyzer()
+      : null;
+
     // Stockage des resultats
     this.findings = {
       secrets: [],
       issues: [],
       endpoints: [],
-      jsEndpoints: []
+      jsEndpoints: [],
+      injections: [],      // Indicateurs d'injection détectés
+      jwtVulnerabilities: [] // Vulnérabilités JWT
     };
 
     // Configuration
@@ -28,6 +38,8 @@ class SecurityAnalyzer {
       extractEndpoints: true,
       parseJS: true,
       deduplicate: true,
+      detectInjections: true,  // Nouveau
+      analyzeJWT: true,        // Nouveau
       ...options
     };
 
@@ -58,6 +70,8 @@ class SecurityAnalyzer {
       deduplicated: false,
       secrets: [],
       issues: [],
+      injections: [],
+      jwtVulnerabilities: [],
       endpoint: null,
       tags: new Set()
     };
@@ -87,6 +101,34 @@ class SecurityAnalyzer {
         }
       } catch (e) {
         console.error('Header check error:', e);
+      }
+    }
+
+    // Détection passive d'injections (SQL, NoSQL, XXE, Command, etc.)
+    if (this.options.detectInjections && this.injectionDetector) {
+      try {
+        const injectionFindings = this.injectionDetector.analyze(harEntry, responseContent);
+        if (injectionFindings.length > 0) {
+          results.injections = injectionFindings;
+          this.findings.injections.push(...injectionFindings);
+          this.notifyFinding('injection', injectionFindings);
+        }
+      } catch (e) {
+        console.error('Injection detection error:', e);
+      }
+    }
+
+    // Analyse JWT avancée
+    if (this.options.analyzeJWT && this.jwtAnalyzer) {
+      try {
+        const jwtResults = this.analyzeJWTInEntry(harEntry);
+        if (jwtResults.length > 0) {
+          results.jwtVulnerabilities = jwtResults;
+          this.findings.jwtVulnerabilities.push(...jwtResults);
+          this.notifyFinding('jwt', jwtResults);
+        }
+      } catch (e) {
+        console.error('JWT analysis error:', e);
       }
     }
 
@@ -131,6 +173,89 @@ class SecurityAnalyzer {
     return header?.value;
   }
 
+  // Analyser les JWT dans une entrée HAR
+  analyzeJWTInEntry(harEntry) {
+    if (!this.jwtAnalyzer) return [];
+
+    const jwtResults = [];
+    const jwtPattern = /eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*/g;
+
+    // Chercher dans les headers Authorization
+    const authHeader = this.getHeader(harEntry.request.headers, 'authorization');
+    if (authHeader) {
+      const match = authHeader.match(jwtPattern);
+      if (match) {
+        for (const token of match) {
+          const analysis = this.jwtAnalyzer.analyze(token);
+          if (analysis.vulnerabilities.length > 0 || analysis.warnings.length > 0) {
+            jwtResults.push({
+              ...analysis,
+              url: harEntry.request.url,
+              location: 'Authorization header',
+              token: token.substring(0, 50) + '...'
+            });
+          }
+        }
+      }
+    }
+
+    // Chercher dans les cookies
+    for (const cookie of harEntry.request.cookies || []) {
+      const match = cookie.value.match(jwtPattern);
+      if (match) {
+        for (const token of match) {
+          const analysis = this.jwtAnalyzer.analyze(token);
+          if (analysis.vulnerabilities.length > 0 || analysis.warnings.length > 0) {
+            jwtResults.push({
+              ...analysis,
+              url: harEntry.request.url,
+              location: `Cookie: ${cookie.name}`,
+              token: token.substring(0, 50) + '...'
+            });
+          }
+        }
+      }
+    }
+
+    // Chercher dans le body de la requête
+    if (harEntry.request.postData?.text) {
+      const matches = harEntry.request.postData.text.match(jwtPattern);
+      if (matches) {
+        for (const token of matches) {
+          const analysis = this.jwtAnalyzer.analyze(token);
+          if (analysis.vulnerabilities.length > 0 || analysis.warnings.length > 0) {
+            jwtResults.push({
+              ...analysis,
+              url: harEntry.request.url,
+              location: 'Request body',
+              token: token.substring(0, 50) + '...'
+            });
+          }
+        }
+      }
+    }
+
+    // Chercher dans la réponse
+    if (harEntry.response.content?.text) {
+      const matches = harEntry.response.content.text.match(jwtPattern);
+      if (matches) {
+        for (const token of matches) {
+          const analysis = this.jwtAnalyzer.analyze(token);
+          if (analysis.vulnerabilities.length > 0 || analysis.warnings.length > 0) {
+            jwtResults.push({
+              ...analysis,
+              url: harEntry.request.url,
+              location: 'Response body',
+              token: token.substring(0, 50) + '...'
+            });
+          }
+        }
+      }
+    }
+
+    return jwtResults;
+  }
+
   notifyFinding(type, data) {
     if (this.onFinding) {
       this.onFinding(type, data);
@@ -160,6 +285,15 @@ class SecurityAnalyzer {
         bySeverity: this.countBySeverity(this.findings.issues),
         byType: this.countByType(this.findings.issues)
       },
+      injections: {
+        total: this.findings.injections.length,
+        bySeverity: this.countBySeverity(this.findings.injections),
+        byType: this.countByType(this.findings.injections)
+      },
+      jwtVulnerabilities: {
+        total: this.findings.jwtVulnerabilities.length,
+        bySeverity: this.countJWTBySeverity(this.findings.jwtVulnerabilities)
+      },
       endpoints: {
         total: endpoints.length,
         byMethod: this.endpointExtractor.getStats().byMethod,
@@ -168,6 +302,19 @@ class SecurityAnalyzer {
       jsEndpoints: this.findings.jsEndpoints.length,
       deduplication: dedupStats
     };
+  }
+
+  // Compter les vulnérabilités JWT par sévérité
+  countJWTBySeverity(jwtResults) {
+    const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+    for (const result of jwtResults) {
+      for (const vuln of result.vulnerabilities || []) {
+        if (vuln.severity && counts.hasOwnProperty(vuln.severity)) {
+          counts[vuln.severity]++;
+        }
+      }
+    }
+    return counts;
   }
 
   countBySeverity(items) {
@@ -192,12 +339,27 @@ class SecurityAnalyzer {
   // Getters pour les resultats
   getSecrets() { return this.findings.secrets; }
   getIssues() { return this.findings.issues; }
+  getInjections() { return this.findings.injections; }
+  getJWTVulnerabilities() { return this.findings.jwtVulnerabilities; }
   getEndpoints() { return this.endpointExtractor.getUniqueEndpoints(); }
   getIDORCandidates() { return this.endpointExtractor.getIDORCandidates(); }
   getJSEndpoints() { return this.findings.jsEndpoints; }
   getDeduplicationStats() { return this.deduplicator.getStats(); }
   getAllParameters() { return this.endpointExtractor.getAllParameters(); }
   getTagStats(entries) { return this.tagger.getTagStats(entries); }
+
+  // Générer des payloads de test pour les injections détectées
+  generateInjectionPayloads(harEntry) {
+    if (!this.injectionDetector) return {};
+    return this.injectionDetector.generateTestPayloads(harEntry);
+  }
+
+  // Générer des variantes d'attaque JWT
+  generateJWTAttackVariants(token) {
+    if (!this.jwtAnalyzer) return [];
+    const analysis = this.jwtAnalyzer.analyze(token);
+    return analysis.attackVariants || [];
+  }
 
   // Exports
   exportForFfuf(options) {
@@ -245,6 +407,43 @@ class SecurityAnalyzer {
     return this.exportManager.toNucleiTemplates(this.getIDORCandidates());
   }
 
+  // Export Burp Suite XML
+  exportToBurp(harEntries, options = {}) {
+    return this.exportManager.toBurp(harEntries, options);
+  }
+
+  // Export SQLmap
+  exportToSqlmap(harEntries, options = {}) {
+    return this.exportManager.toSqlmap(harEntries, options);
+  }
+
+  // Export CSV
+  exportToCSV(options = {}) {
+    return this.exportManager.toCSV({
+      findings: [...this.getIssues(), ...this.getInjections()],
+      endpoints: this.getEndpoints(),
+      secrets: this.getSecrets()
+    }, options);
+  }
+
+  // Export wfuzz
+  exportToWfuzz(options = {}) {
+    return this.exportManager.toWfuzz(this.getEndpoints(), options);
+  }
+
+  // Obtenir tous les findings combinés (pour rapport complet)
+  getAllFindings() {
+    return {
+      secrets: this.getSecrets(),
+      issues: this.getIssues(),
+      injections: this.getInjections(),
+      jwtVulnerabilities: this.getJWTVulnerabilities(),
+      endpoints: this.getEndpoints(),
+      idorCandidates: this.getIDORCandidates(),
+      jsEndpoints: this.getJSEndpoints()
+    };
+  }
+
   // Utilitaires
   download(content, filename, mimeType) {
     this.exportManager.download(content, filename, mimeType);
@@ -273,7 +472,9 @@ class SecurityAnalyzer {
       secrets: [],
       issues: [],
       endpoints: [],
-      jsEndpoints: []
+      jsEndpoints: [],
+      injections: [],
+      jwtVulnerabilities: []
     };
     this.deduplicator.clear();
     this.endpointExtractor.clear();
