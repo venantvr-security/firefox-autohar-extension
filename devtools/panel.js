@@ -32,6 +32,9 @@ class AutoHARCapture {
     // Callbacks pour updates UI
     this.securityAnalyzer.onUpdate = (summary) => this.updateSecurityUI(summary);
 
+    // Cloud Sync Manager
+    this.cloudSync = new CloudSyncManager();
+
     // Current export data
     this.currentExport = { content: '', filename: '', mimeType: 'text/plain' };
 
@@ -65,6 +68,24 @@ class AutoHARCapture {
       filterApiOnly: document.getElementById('filterApiOnly'),
       filterThirdParty: document.getElementById('filterThirdParty'),
       filterDedupe: document.getElementById('filterDedupe'),
+
+      // Cloud Sync
+      cloudAutoSync: document.getElementById('cloudAutoSync'),
+      cloudProvider: document.getElementById('cloudProvider'),
+      cloudClientId: document.getElementById('cloudClientId'),
+      cloudMachineId: document.getElementById('cloudMachineId'),
+      cloudCopyId: document.getElementById('cloudCopyId'),
+      cloudConnect: document.getElementById('cloudConnect'),
+      cloudRevoke: document.getElementById('cloudRevoke'),
+      cloudStatus: document.getElementById('cloudStatus'),
+      cloudConfigGroup: document.getElementById('cloudConfigGroup'),
+      cloudClientIdGroup: document.getElementById('cloudClientIdGroup'),
+      cloudActions: document.getElementById('cloudActions'),
+      cloudInfoBox: document.getElementById('cloudInfoBox'),
+      cloudStats: document.getElementById('cloudStats'),
+      cloudAuthStatus: document.getElementById('cloudAuthStatus'),
+      cloudProviderStatus: document.getElementById('cloudProviderStatus'),
+      cloudHelp: document.getElementById('cloudHelp'),
 
       // Log
       logContainer: document.getElementById('logContainer'),
@@ -133,6 +154,81 @@ class AutoHARCapture {
     this.openAPIGenerator = new OpenAPIGenerator();
     this.selectedPromptId = null;
     this.editingPromptId = null;
+
+    // Initialiser UI Cloud Sync
+    this.initCloudSyncUI();
+  }
+
+  /**
+   * Initialise l'UI Cloud Sync
+   */
+  async initCloudSyncUI() {
+    const stats = this.cloudSync.getStats();
+
+    // Afficher Machine ID
+    if (this.elements.cloudMachineId) {
+      this.elements.cloudMachineId.textContent = stats.machineId || '-';
+    }
+
+    // État initial
+    this.updateCloudSyncUI();
+  }
+
+  /**
+   * Met à jour l'UI Cloud Sync
+   */
+  updateCloudSyncUI() {
+    const stats = this.cloudSync.getStats();
+    const authenticated = stats.authenticated;
+    const autoSync = stats.autoSync;
+
+    // Statut
+    if (this.elements.cloudStatus) {
+      if (autoSync && authenticated) {
+        this.elements.cloudStatus.className = 'cloud-sync-status connected';
+        this.elements.cloudStatus.textContent = '✅ Connecté';
+      } else if (autoSync) {
+        this.elements.cloudStatus.className = 'cloud-sync-status disconnected';
+        this.elements.cloudStatus.textContent = 'Non connecté';
+      } else {
+        this.elements.cloudStatus.className = 'cloud-sync-status disabled';
+        this.elements.cloudStatus.textContent = 'Désactivé';
+      }
+    }
+
+    // Afficher/masquer sections selon état
+    const showConfig = autoSync && stats.provider !== 'none';
+    if (this.elements.cloudConfigGroup) {
+      this.elements.cloudConfigGroup.style.display = autoSync ? 'flex' : 'none';
+    }
+    if (this.elements.cloudClientIdGroup) {
+      this.elements.cloudClientIdGroup.style.display = showConfig && stats.provider === 'gdrive' ? 'flex' : 'none';
+    }
+    if (this.elements.cloudActions) {
+      this.elements.cloudActions.style.display = showConfig ? 'flex' : 'none';
+    }
+    if (this.elements.cloudInfoBox) {
+      this.elements.cloudInfoBox.style.display = showConfig ? 'block' : 'none';
+    }
+    if (this.elements.cloudStats) {
+      this.elements.cloudStats.style.display = showConfig ? 'grid' : 'none';
+    }
+
+    // Boutons
+    if (this.elements.cloudConnect) {
+      this.elements.cloudConnect.style.display = !authenticated && showConfig ? 'inline-flex' : 'none';
+    }
+    if (this.elements.cloudRevoke) {
+      this.elements.cloudRevoke.style.display = authenticated && showConfig ? 'inline-flex' : 'none';
+    }
+
+    // Stats
+    if (this.elements.cloudAuthStatus) {
+      this.elements.cloudAuthStatus.textContent = authenticated ? 'Connecté' : 'Non connecté';
+    }
+    if (this.elements.cloudProviderStatus) {
+      this.elements.cloudProviderStatus.textContent = stats.provider === 'gdrive' ? 'Google Drive' : '-';
+    }
   }
 
   async loadSettings() {
@@ -228,6 +324,67 @@ class AutoHARCapture {
       this.settings.deduplicate = e.target.checked;
       this.securityAnalyzer.setOptions({ deduplicate: e.target.checked });
     });
+
+    // Cloud Sync events
+    if (this.elements.cloudAutoSync) {
+      this.elements.cloudAutoSync.addEventListener('change', (e) => {
+        this.cloudSync.setAutoSync(e.target.checked, this.elements.cloudProvider.value);
+        this.updateCloudSyncUI();
+      });
+    }
+
+    if (this.elements.cloudProvider) {
+      this.elements.cloudProvider.addEventListener('change', (e) => {
+        this.cloudSync.config.syncProvider = e.target.value;
+        this.cloudSync.saveConfig();
+        this.updateCloudSyncUI();
+      });
+    }
+
+    if (this.elements.cloudClientId) {
+      this.elements.cloudClientId.addEventListener('blur', (e) => {
+        this.cloudSync.setGoogleClientId(e.target.value);
+      });
+    }
+
+    if (this.elements.cloudCopyId) {
+      this.elements.cloudCopyId.addEventListener('click', () => {
+        const machineId = this.cloudSync.config.machineId;
+        navigator.clipboard.writeText(machineId).then(() => {
+          this.log('📋 Machine ID copié', 'info');
+        });
+      });
+    }
+
+    if (this.elements.cloudConnect) {
+      this.elements.cloudConnect.addEventListener('click', async () => {
+        try {
+          this.log('🔐 Connexion Google Drive...', 'info');
+          await this.cloudSync.authenticateGoogleDrive();
+          this.updateCloudSyncUI();
+          this.log('✅ Connexion Google Drive réussie', 'success');
+        } catch (e) {
+          this.log('❌ Erreur connexion : ' + e.message, 'error');
+        }
+      });
+    }
+
+    if (this.elements.cloudRevoke) {
+      this.elements.cloudRevoke.addEventListener('click', async () => {
+        if (confirm('Révoquer l\'accès Google Drive ? Les fichiers existants ne seront pas supprimés.')) {
+          await this.cloudSync.revokeAccess();
+          this.updateCloudSyncUI();
+          this.log('✅ Accès Google Drive révoqué', 'info');
+        }
+      });
+    }
+
+    if (this.elements.cloudHelp) {
+      this.elements.cloudHelp.addEventListener('click', (e) => {
+        e.preventDefault();
+        window.open('docs/CLOUD_SYNC_SETUP.md', '_blank');
+      });
+    }
 
     // Tab navigation
     this.elements.tabButtons.forEach(btn => {
@@ -769,6 +926,20 @@ class AutoHARCapture {
         });
 
         this.log(`Saved: ${result.filename} (${sizeMB.toFixed(2)} MB, ${this.requests.length} req)`, 'success');
+
+        // Cloud Sync si activé
+        if (this.cloudSync && this.cloudSync.config.autoSync) {
+          try {
+            const harString = JSON.stringify(har, null, 2);
+            await this.cloudSync.saveWithSync(harString, domain, {
+              extension: 'har',
+              mimeType: 'application/json'
+            });
+            this.log('☁️  Synchronisé avec cloud', 'info');
+          } catch (cloudError) {
+            this.log('⚠️  Erreur sync cloud: ' + cloudError.message, 'warning');
+          }
+        }
 
         browser.runtime.sendMessage({
           action: 'notifySaved',

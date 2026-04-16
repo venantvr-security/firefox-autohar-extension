@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "PentestHAR - Security Traffic Analyzer",
-  "version": "2.0.0",
-  "description": "Capture et analyse de sécurité du trafic réseau. Détection de secrets, IDOR, headers vulnérables. Export ffuf/nuclei/Burp.",
+  "version": "2.2.0",
+  "description": "Capture et analyse de sécurité du trafic réseau. Détection de secrets, IDOR, headers vulnérables. Export ffuf/nuclei/Burp. Cloud sync.",
   "author": "venantvr-security",
   "homepage_url": "https://github.com/venantvr-security",
 
@@ -16,6 +16,7 @@
     "downloads",
     "storage",
     "notifications",
+    "identity",
     "<all_urls>"
   ],
 

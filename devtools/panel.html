@@ -922,6 +922,7 @@
     }
   </style>
   <link rel="stylesheet" href="styles/help.css">
+  <link rel="stylesheet" href="styles/cloud-sync.css">
 </head>
 <body>
   <div class="header">
@@ -1004,6 +1005,72 @@
 
     <div class="domain-filter">
       <input type="text" id="domainFilter" placeholder="Filter by domain (e.g., api.example.com)">
+    </div>
+
+    <!-- Cloud Sync Section -->
+    <div class="cloud-sync-section">
+      <div class="cloud-sync-header">
+        <h3>☁️ Cloud Sync</h3>
+        <span class="cloud-sync-status disconnected" id="cloudStatus">Désactivé</span>
+      </div>
+
+      <div class="cloud-sync-form">
+        <div class="cloud-toggle-group">
+          <label>Synchronisation automatique</label>
+          <label class="cloud-toggle">
+            <input type="checkbox" id="cloudAutoSync">
+            <span class="cloud-toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="cloud-form-group" id="cloudConfigGroup" style="display: none;">
+          <label>Provider</label>
+          <select id="cloudProvider">
+            <option value="none">Aucun</option>
+            <option value="gdrive">Google Drive</option>
+          </select>
+        </div>
+
+        <div class="cloud-form-group" id="cloudClientIdGroup" style="display: none;">
+          <label>Google Client ID</label>
+          <input type="text" id="cloudClientId" placeholder="123456789-abc.apps.googleusercontent.com">
+          <small>Obtenir sur <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a></small>
+        </div>
+
+        <div class="cloud-form-group">
+          <label>Machine ID</label>
+          <div class="cloud-machine-id">
+            <code id="cloudMachineId">-</code>
+            <button class="cloud-copy-btn" id="cloudCopyId" title="Copier">📋</button>
+          </div>
+          <small>Identifiant unique de cette machine</small>
+        </div>
+
+        <div class="cloud-buttons" id="cloudActions" style="display: none;">
+          <button class="cloud-btn cloud-btn-primary" id="cloudConnect">🔐 Connecter Google Drive</button>
+          <button class="cloud-btn cloud-btn-danger" id="cloudRevoke" style="display: none;">🗑️ Révoquer Accès</button>
+        </div>
+
+        <div class="cloud-info-box" style="display: none;" id="cloudInfoBox">
+          <strong>📁 Organisation des fichiers</strong>
+          Format : <code>PentestHAR/{domain}/{domain}_{date}_{time}_{machineId}.har</code>
+        </div>
+
+        <div class="cloud-stats" style="display: none;" id="cloudStats">
+          <div class="cloud-stat-item">
+            <div class="cloud-stat-label">Statut</div>
+            <div class="cloud-stat-value" id="cloudAuthStatus">Non connecté</div>
+          </div>
+          <div class="cloud-stat-item">
+            <div class="cloud-stat-label">Provider</div>
+            <div class="cloud-stat-value" id="cloudProviderStatus">-</div>
+          </div>
+        </div>
+      </div>
+
+      <a href="#" class="cloud-help-link" id="cloudHelp">
+        📖 Guide de configuration complet
+      </a>
     </div>
 
     <div class="log-section">
@@ -1239,6 +1306,7 @@
   <script src="security/OpenAPIGenerator.js"></script>
   <script src="security/RiskScorer.js"></script>
   <script src="security/AIExportManager.js"></script>
+  <script src="security/CloudSyncManager.js"></script>
 
   <!-- Load help system -->
   <script src="help/HelpSystem.js"></script>
