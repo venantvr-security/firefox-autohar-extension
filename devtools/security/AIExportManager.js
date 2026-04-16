@@ -5,6 +5,7 @@ class AIExportManager {
   constructor(securityAnalyzer) {
     this.analyzer = securityAnalyzer;
     this.promptStore = new PromptTemplateStore();
+    this.riskScorer = new RiskScorer();
     this.sessionStart = Date.now();
     this.target = null;
   }
@@ -76,6 +77,108 @@ class AIExportManager {
     }
 
     return rendered;
+  }
+
+  // === Scoring et Enrichissement ===
+
+  /**
+   * Enrichir tous les findings avec scoring
+   */
+  enrichFindings(context) {
+    const allFindings = [
+      ...context.secrets.map(s => ({ ...s, findingType: 'secret' })),
+      ...context.issues.map(i => ({ ...i, findingType: 'issue' })),
+      ...context.idorCandidates.map(c => ({ ...c, findingType: 'idor', severity: 'high', type: 'idor' }))
+    ];
+
+    return allFindings.map(finding => {
+      const scored = this.riskScorer.calculateCompositeScore(finding, {
+        requiresAuth: true, // TODO: détecter depuis le contexte
+        isPublic: true
+      });
+
+      return {
+        ...finding,
+        riskScore: scored.score,
+        riskLevel: scored.level,
+        priority: scored.priority,
+        cvss: scored.cvss,
+        timeToExploit: scored.timeToExploit,
+        recommendation: scored.recommendation,
+        enrichment: scored.enrichment
+      };
+    }).sort((a, b) => b.riskScore - a.riskScore); // Trier par score décroissant
+  }
+
+  /**
+   * Obtenir les findings critiques (score >= 8.5)
+   */
+  getCriticalFindings(context) {
+    const enriched = this.enrichFindings(context);
+    return enriched.filter(f => f.riskScore >= 8.5);
+  }
+
+  /**
+   * Calculer le score de risque global
+   */
+  calculateOverallRiskScore(context) {
+    const allFindings = [
+      ...context.secrets,
+      ...context.issues,
+      ...context.idorCandidates.map(c => ({ ...c, severity: 'high', type: 'idor' }))
+    ];
+
+    if (allFindings.length === 0) {
+      return {
+        score: 0,
+        level: 'AUCUN',
+        emoji: '🟢',
+        criticalCount: 0,
+        highCount: 0,
+        mediumCount: 0,
+        recommendation: 'Aucune vulnérabilité détectée'
+      };
+    }
+
+    const overallRisk = this.riskScorer.calculateOverallRisk(allFindings);
+
+    return {
+      ...overallRisk,
+      emoji: this.getRiskEmoji(overallRisk.level),
+      summary: this.formatRiskSummary(overallRisk)
+    };
+  }
+
+  /**
+   * Obtenir l'emoji pour un niveau de risque
+   */
+  getRiskEmoji(level) {
+    const emojis = {
+      'CRITIQUE': '🔴',
+      'ÉLEVÉ': '🟠',
+      'MOYEN': '🟡',
+      'FAIBLE': '🟢',
+      'AUCUN': '⚪'
+    };
+    return emojis[level] || '⚪';
+  }
+
+  /**
+   * Formater le résumé de risque
+   */
+  formatRiskSummary(overallRisk) {
+    let summary = `**${overallRisk.level}** (Score: ${overallRisk.score.toFixed(1)}/10)\n`;
+
+    if (overallRisk.criticalCount > 0) {
+      summary += `- ${overallRisk.criticalCount} finding(s) critique(s)\n`;
+    }
+    if (overallRisk.highCount > 0) {
+      summary += `- ${overallRisk.highCount} finding(s) de haute sévérité\n`;
+    }
+
+    summary += `\n**Action recommandée**: ${overallRisk.recommendation}`;
+
+    return summary;
   }
 
   // === Formateurs ===
@@ -158,6 +261,207 @@ class AIExportManager {
 
     return output;
   }
+
+  // === Formateurs Enrichis (avec scoring) ===
+
+  formatCriticalFindings(criticalFindings) {
+    if (criticalFindings.length === 0) {
+      return '✅ **Aucun finding critique détecté** (score < 8.5)\n\nCependant, veuillez examiner les findings de priorité haute ci-dessous.';
+    }
+
+    let output = `**${criticalFindings.length} finding(s) critique(s) nécessitant une action immédiate:**\n\n`;
+
+    for (const [index, finding] of criticalFindings.entries()) {
+      const num = index + 1;
+      output += `### #${num} - ${finding.description || finding.type || 'Finding'} [${finding.riskLevel}]\n\n`;
+      output += `- **Score de Risque**: ${finding.riskScore.toFixed(1)}/10\n`;
+      output += `- **Priorité**: ${finding.priority}\n`;
+      output += `- **CVSS v3**: ${finding.cvss}\n`;
+      output += `- **Temps d'exploitation estimé**: ${finding.timeToExploit}\n`;
+
+      if (finding.enrichment) {
+        output += `- **CWE**: ${finding.enrichment.cwe.id} - ${finding.enrichment.cwe.name}\n`;
+        output += `- **OWASP**: ${finding.enrichment.owasp}\n`;
+        output += `- **Niveau requis**: ${finding.enrichment.skillLevel}\n`;
+      }
+
+      if (finding.findingType === 'secret') {
+        output += `- **Valeur**: \`${finding.masked}\`\n`;
+        output += `- **Location**: ${finding.location}\n`;
+      } else if (finding.findingType === 'idor') {
+        const maxConfidence = Math.max(...finding.idorIndicators.map(i => i.confidence));
+        output += `- **Endpoint**: ${finding.method} ${finding.normalizedPath}\n`;
+        output += `- **Confiance IDOR**: ${(maxConfidence * 100).toFixed(0)}%\n`;
+      } else if (finding.findingType === 'issue') {
+        output += `- **Détails**: ${finding.description}\n`;
+      }
+
+      output += `\n**📋 Recommandation**:\n`;
+      output += `- **Action**: ${finding.recommendation.action}\n`;
+      output += `- **Timeline**: ${finding.recommendation.timeline}\n`;
+      if (finding.recommendation.notification.length > 0) {
+        output += `- **Notifier**: ${finding.recommendation.notification.join(', ')}\n`;
+      }
+
+      output += '\n---\n\n';
+    }
+
+    return output;
+  }
+
+  formatTopFindings(topFindings) {
+    if (topFindings.length === 0) {
+      return 'Aucun finding détecté.';
+    }
+
+    let output = '';
+
+    for (const [index, finding] of topFindings.entries()) {
+      const num = index + 1;
+      const emoji = finding.riskScore >= 8.5 ? '🔴' : finding.riskScore >= 7 ? '🟠' : '🟡';
+
+      output += `**${num}. ${emoji} ${finding.description || finding.type}** - Score: ${finding.riskScore.toFixed(1)}/10 [${finding.priority}]\n`;
+
+      if (finding.enrichment) {
+        output += `   - ${finding.enrichment.cwe.id} | ${finding.enrichment.owasp}\n`;
+      }
+
+      output += `   - Exploitation: ${finding.timeToExploit} | Skill: ${finding.enrichment?.skillLevel || 'N/A'}\n`;
+
+      if (finding.findingType === 'secret') {
+        output += `   - Secret: \`${finding.masked}\` dans ${finding.location}\n`;
+      } else if (finding.findingType === 'idor') {
+        output += `   - Endpoint: ${finding.method} ${finding.normalizedPath}\n`;
+      }
+
+      output += '\n';
+    }
+
+    return output;
+  }
+
+  formatSecretsEnriched(secrets, enrichedFindings) {
+    if (!secrets.length) return 'Aucun secret détecté';
+
+    const enrichedSecrets = enrichedFindings.filter(f => f.findingType === 'secret');
+
+    let output = '';
+    for (const secret of enrichedSecrets.slice(0, 20)) {
+      output += `### ${secret.type.toUpperCase()} [${secret.riskLevel}]\n\n`;
+      output += `- **Score**: ${secret.riskScore.toFixed(1)}/10 | **CVSS**: ${secret.cvss}\n`;
+      output += `- **Valeur**: \`${secret.masked}\`\n`;
+      output += `- **Location**: ${secret.location}\n`;
+
+      if (secret.enrichment) {
+        output += `- **CWE**: ${secret.enrichment.cwe.id} - ${secret.enrichment.cwe.name}\n`;
+        output += `- **OWASP**: ${secret.enrichment.owasp}\n`;
+        output += `- **Exploitation**: ${secret.timeToExploit}\n`;
+
+        if (secret.enrichment.references && secret.enrichment.references.length > 0) {
+          output += `- **Références**: [CWE](${secret.enrichment.references[0]})\n`;
+        }
+      }
+
+      output += `\n**Recommandation**: ${secret.recommendation.action} (${secret.recommendation.timeline})\n\n`;
+    }
+
+    if (enrichedSecrets.length > 20) {
+      output += `\n*... et ${enrichedSecrets.length - 20} autres secrets*\n`;
+    }
+
+    return output;
+  }
+
+  formatIDORCandidatesEnriched(candidates, enrichedFindings) {
+    if (!candidates.length) return 'Aucun candidat IDOR détecté';
+
+    const enrichedIDORs = enrichedFindings.filter(f => f.findingType === 'idor');
+
+    let output = '| Endpoint | Score | CVSS | Confiance | Temps Exploit |\n';
+    output += '|----------|-------|------|-----------|---------------|\n';
+
+    for (const idor of enrichedIDORs.slice(0, 20)) {
+      const maxConfidence = Math.max(...idor.idorIndicators.map(i => i.confidence));
+      output += `| \`${idor.method} ${idor.normalizedPath}\` | ${idor.riskScore.toFixed(1)}/10 | ${idor.cvss} | ${(maxConfidence * 100).toFixed(0)}% | ${idor.timeToExploit} |\n`;
+    }
+
+    if (enrichedIDORs.length > 20) {
+      output += `\n*... et ${enrichedIDORs.length - 20} autres candidats*\n`;
+    }
+
+    return output;
+  }
+
+  formatIssuesEnriched(issues, enrichedFindings) {
+    if (!issues.length) return 'Aucun problème de sécurité détecté';
+
+    const enrichedIssues = enrichedFindings.filter(f => f.findingType === 'issue');
+
+    const byType = {};
+    for (const issue of enrichedIssues) {
+      byType[issue.type] = byType[issue.type] || [];
+      byType[issue.type].push(issue);
+    }
+
+    let output = '';
+    for (const [type, typeIssues] of Object.entries(byType)) {
+      output += `\n### ${this.formatIssueType(type)} (${typeIssues.length})\n\n`;
+
+      for (const issue of typeIssues.slice(0, 5)) {
+        output += `- **[${issue.riskLevel}]** ${issue.description}\n`;
+        output += `  - Score: ${issue.riskScore.toFixed(1)}/10 | CVSS: ${issue.cvss}\n`;
+
+        if (issue.enrichment) {
+          output += `  - ${issue.enrichment.cwe.id} | ${issue.enrichment.owasp}\n`;
+        }
+      }
+
+      if (typeIssues.length > 5) {
+        output += `  *... et ${typeIssues.length - 5} autres*\n`;
+      }
+    }
+
+    return output;
+  }
+
+  generateRecommendations(enrichedFindings, overallRisk) {
+    let output = `### Action Immédiate\n\n`;
+
+    // Findings P0
+    const p0Findings = enrichedFindings.filter(f => f.priority === 'P0');
+    if (p0Findings.length > 0) {
+      output += `**${p0Findings.length} vulnérabilité(s) critique(s) à corriger dans les 24 heures:**\n\n`;
+      for (const f of p0Findings) {
+        output += `1. ${f.description || f.type} - ${f.recommendation.action}\n`;
+      }
+      output += '\n';
+    }
+
+    // Findings P1
+    const p1Findings = enrichedFindings.filter(f => f.priority === 'P1');
+    if (p1Findings.length > 0) {
+      output += `### Corrections Urgentes (< 7 jours)\n\n`;
+      output += `**${p1Findings.length} vulnérabilité(s) à corriger:**\n\n`;
+      for (const f of p1Findings.slice(0, 5)) {
+        output += `- ${f.description || f.type}\n`;
+      }
+      if (p1Findings.length > 5) {
+        output += `- ... et ${p1Findings.length - 5} autres\n`;
+      }
+      output += '\n';
+    }
+
+    // Recommandations générales
+    output += `### Recommandations Générales\n\n`;
+    output += `1. **Monitoring**: Activer la surveillance des endpoints critiques\n`;
+    output += `2. **Tests**: Effectuer des tests d'intrusion complets\n`;
+    output += `3. **Formation**: Sensibiliser l'équipe dev aux vulnérabilités détectées\n`;
+    output += `4. **Audit**: Planifier un audit de sécurité approfondi\n`;
+
+    return output;
+  }
+
+  // === Formateurs originaux (rétro-compatibilité) ===
 
   formatIDORCandidates(candidates) {
     if (!candidates.length) return 'Aucun candidat IDOR détecté';
@@ -348,58 +652,298 @@ class AIExportManager {
 
   // === Exports spécialisés ===
 
-  // Générer un AI Brief complet
+  // Générer un AI Brief complet (OPTIMISÉ - Pyramide Inversée)
   generateAIBrief() {
     const context = this.collectContext();
+    const overallRisk = this.calculateOverallRiskScore(context);
+    const criticalFindings = this.getCriticalFindings(context);
+    const enrichedFindings = this.enrichFindings(context);
 
-    return `# AI Security Brief - ${context.target}
+    return `# 🚨 ANALYSE SÉCURITÉ - ${context.target}
 
-## Métadonnées Session
-| Propriété | Valeur |
-|-----------|--------|
-| Cible | ${context.target} |
-| Durée | ${context.sessionDuration} |
-| Requêtes | ${context.requestCount} |
-| Endpoints uniques | ${context.endpointsCount} |
-| Secrets détectés | ${context.secrets.length} |
-| Issues sécurité | ${context.issues.length} |
-| Candidats IDOR | ${context.idorCandidates.length} |
+## ⚠️ ACTION IMMÉDIATE REQUISE
 
-## Résumé Exécutif
+${this.formatCriticalFindings(criticalFindings)}
 
-### Criticité Globale
-${this.assessOverallRisk(context)}
+## 📊 SCORE DE RISQUE GLOBAL
 
-### Findings Prioritaires
-${this.getTopFindings(context)}
+${overallRisk.emoji} **${overallRisk.level}** - Score: **${overallRisk.score.toFixed(1)}/10**
 
-## Surface d'Attaque
-${this.formatEndpoints(context.endpoints)}
+${overallRisk.summary}
 
-## Authentification
-${this.formatAuthEndpoints(context.endpoints)}
-
-## Secrets Détectés
-${this.formatSecrets(context.secrets, true)}
-
-## JWT Analysis
-${this.formatJWTs(context.secrets)}
-
-## IDOR Candidates
-${this.formatIDORCandidates(context.idorCandidates)}
-
-## Security Issues
-${this.formatIssues(context.issues)}
-
-## Paramètres Découverts
-${this.formatParameters(context.parameters)}
-
-## Stack Technique
-${this.detectTechStack(context)}
+**Priorisation des corrections**:
+- P0 (Critique): ${overallRisk.breakdown.p0} finding(s)
+- P1 (Haute): ${overallRisk.breakdown.p1} finding(s)
+- P2 (Moyenne): ${overallRisk.breakdown.p2} finding(s)
+- P3 (Basse): ${overallRisk.breakdown.p3} finding(s)
 
 ---
-*Généré par PentestHAR - ${new Date().toISOString()}*
+
+## 🎯 FINDINGS PRIORITAIRES (Top ${Math.min(5, enrichedFindings.length)})
+
+${this.formatTopFindings(enrichedFindings.slice(0, 5))}
+
+---
+
+## 📋 VUE D'ENSEMBLE SESSION
+
+| Métrique | Valeur |
+|----------|--------|
+| 🎯 **Cible** | ${context.target} |
+| ⏱️ **Durée** | ${context.sessionDuration} |
+| 📡 **Requêtes** | ${context.requestCount} |
+| 🌐 **Endpoints** | ${context.endpointsCount} |
+| 🔑 **Secrets** | ${context.secrets.length} |
+| ⚠️ **Issues** | ${context.issues.length} |
+| 🎯 **IDOR candidats** | ${context.idorCandidates.length} |
+| 🏗️ **Stack** | ${this.detectTechStack(context)} |
+| 🔢 **API Version** | ${this.detectAPIVersions(context.endpoints)} |
+
+---
+
+## 📖 DÉTAILS TECHNIQUES
+
+### 🔐 Secrets Détectés
+${this.formatSecretsEnriched(context.secrets, enrichedFindings)}
+
+### 🎯 Candidats IDOR
+${this.formatIDORCandidatesEnriched(context.idorCandidates, enrichedFindings)}
+
+### ⚠️ Problèmes de Sécurité
+${this.formatIssuesEnriched(context.issues, enrichedFindings)}
+
+### 🔍 JWT Analysis
+${this.formatJWTs(context.secrets)}
+
+### 🌐 Surface d'Attaque
+${this.formatEndpoints(context.endpoints)}
+
+### 🔑 Endpoints d'Authentification
+${this.formatAuthEndpoints(context.endpoints)}
+
+### 📝 Paramètres Découverts
+${this.formatParameters(context.parameters)}
+
+---
+
+## 💡 RECOMMANDATIONS
+
+${this.generateRecommendations(enrichedFindings, overallRisk)}
+
+---
+
+*🤖 Généré par PentestHAR v2.0 - ${new Date().toISOString()}*
+*📊 Analysé avec RiskScorer - ${enrichedFindings.length} findings enrichis*
 `;
+  }
+
+  // Générer un brief structuré (format JSON + Markdown hybride)
+  generateStructuredBrief() {
+    const context = this.collectContext();
+    const overallRisk = this.calculateOverallRiskScore(context);
+    const enrichedFindings = this.enrichFindings(context);
+    const criticalFindings = enrichedFindings.filter(f => f.riskScore >= 8.5);
+    const highFindings = enrichedFindings.filter(f => f.riskScore >= 7 && f.riskScore < 8.5);
+
+    // Métadonnées en JSON
+    const metadata = {
+      target: context.target,
+      sessionDuration: context.sessionDuration,
+      sessionStart: new Date(this.sessionStart).toISOString(),
+      requestCount: context.requestCount,
+      endpointsCount: context.endpointsCount,
+      riskScore: overallRisk.score,
+      riskLevel: overallRisk.level,
+      priority: {
+        p0: overallRisk.breakdown.p0,
+        p1: overallRisk.breakdown.p1,
+        p2: overallRisk.breakdown.p2,
+        p3: overallRisk.breakdown.p3
+      },
+      techStack: this.detectTechStack(context),
+      apiVersions: this.detectAPIVersions(context.endpoints),
+      generatedAt: new Date().toISOString(),
+      generator: 'PentestHAR v2.0'
+    };
+
+    // Findings structurés en JSON
+    const structuredFindings = enrichedFindings.map(f => ({
+      id: `F${enrichedFindings.indexOf(f) + 1}`,
+      type: f.type,
+      findingType: f.findingType,
+      description: f.description,
+      severity: f.severity,
+      riskScore: f.riskScore,
+      riskLevel: f.riskLevel,
+      priority: f.priority,
+      cvss: f.cvss,
+      timeToExploit: f.timeToExploit,
+      cwe: f.enrichment?.cwe,
+      owasp: f.enrichment?.owasp,
+      skillLevel: f.enrichment?.skillLevel,
+      location: f.location || f.normalizedPath || 'N/A',
+      recommendation: f.recommendation,
+      references: f.enrichment?.references || []
+    }));
+
+    return `# 🔐 Rapport Sécurité Structuré - ${context.target}
+
+## 📦 Métadonnées (Machine-Readable)
+
+\`\`\`json
+${JSON.stringify(metadata, null, 2)}
+\`\`\`
+
+## 🚨 Findings (Structured Data)
+
+\`\`\`json
+${JSON.stringify(structuredFindings, null, 2)}
+\`\`\`
+
+---
+
+## 📊 Analyse Narrative
+
+### Vue d'Ensemble
+
+${overallRisk.emoji} **Niveau de Risque**: ${overallRisk.level} (${overallRisk.score.toFixed(1)}/10)
+
+Le scan a identifié **${enrichedFindings.length} findings** dont:
+- **${criticalFindings.length}** critiques (P0)
+- **${highFindings.length}** hautes (P1)
+- **${overallRisk.breakdown.p2}** moyennes (P2)
+- **${overallRisk.breakdown.p3}** basses (P3)
+
+### Top 3 Findings Critiques
+
+${this.formatTop3ForNarrative(criticalFindings)}
+
+### Recommandations Immédiates
+
+${this.generateImmediateActions(criticalFindings)}
+
+---
+
+## 🎯 Exploitation Guide
+
+### Quick Wins (Facile + Impact Élevé)
+
+${this.identifyQuickWins(enrichedFindings)}
+
+### Attack Chains Détectés
+
+${this.detectAttackChains(enrichedFindings)}
+
+---
+
+## 📚 Références et Ressources
+
+- **CWE Database**: https://cwe.mitre.org/
+- **OWASP Top 10**: https://owasp.org/www-project-top-ten/
+- **PortSwigger KB**: https://portswigger.net/kb/issues/
+
+---
+
+*Généré le ${new Date().toISOString()}*
+*Format: JSON + Markdown Hybride pour optimisation LLM*
+`;
+  }
+
+  formatTop3ForNarrative(criticalFindings) {
+    if (criticalFindings.length === 0) {
+      return '✅ Aucun finding critique détecté.';
+    }
+
+    return criticalFindings.slice(0, 3).map((f, i) => {
+      return `**${i + 1}. ${f.description || f.type}**
+   - Score: ${f.riskScore.toFixed(1)}/10 | CVSS: ${f.cvss}
+   - ${f.enrichment?.cwe.id} - ${f.enrichment?.cwe.name}
+   - Exploitation: ${f.timeToExploit}
+   - Action: ${f.recommendation.action} (${f.recommendation.timeline})`;
+    }).join('\n\n');
+  }
+
+  generateImmediateActions(criticalFindings) {
+    if (criticalFindings.length === 0) {
+      return 'Aucune action critique immédiate requise.';
+    }
+
+    let output = '**À faire dans les 24h:**\n\n';
+    for (const [i, f] of criticalFindings.entries()) {
+      output += `${i + 1}. ${f.recommendation.action} pour "${f.description || f.type}"\n`;
+    }
+
+    return output;
+  }
+
+  identifyQuickWins(enrichedFindings) {
+    // Quick wins = score élevé + temps d'exploit court
+    const quickWins = enrichedFindings.filter(f =>
+      f.riskScore >= 7 &&
+      (f.timeToExploit.includes('< 5 min') || f.timeToExploit.includes('< 30 min'))
+    ).slice(0, 5);
+
+    if (quickWins.length === 0) {
+      return 'Aucun quick win évident détecté.';
+    }
+
+    let output = '';
+    for (const f of quickWins) {
+      output += `- **${f.description || f.type}** (${f.timeToExploit})\n`;
+      output += `  - Score: ${f.riskScore.toFixed(1)}/10 | Skill: ${f.enrichment?.skillLevel}\n`;
+    }
+
+    return output;
+  }
+
+  detectAttackChains(enrichedFindings) {
+    // Logique simplifiée : détection de chaînes basée sur types
+    const secrets = enrichedFindings.filter(f => f.findingType === 'secret');
+    const idors = enrichedFindings.filter(f => f.findingType === 'idor');
+    const jwts = secrets.filter(f => f.type?.includes('jwt'));
+
+    const chains = [];
+
+    // Chain 1: Secret + IDOR = Account Takeover
+    if (secrets.length > 0 && idors.length > 0) {
+      chains.push({
+        name: 'Account Takeover Chain',
+        impact: 'HIGH',
+        steps: [
+          `1. Exploiter secret: ${secrets[0].type}`,
+          `2. Utiliser IDOR: ${idors[0].normalizedPath || idors[0].description}`,
+          `3. Résultat: Accès complet aux comptes utilisateurs`
+        ]
+      });
+    }
+
+    // Chain 2: JWT + IDOR
+    if (jwts.length > 0 && idors.length > 0) {
+      chains.push({
+        name: 'JWT Manipulation + IDOR',
+        impact: 'CRITICAL',
+        steps: [
+          `1. Manipuler JWT: ${jwts[0].type}`,
+          `2. Exploiter IDOR: ${idors[0].normalizedPath || idors[0].description}`,
+          `3. Résultat: Privilege escalation + accès données`
+        ]
+      });
+    }
+
+    if (chains.length === 0) {
+      return 'Aucune chaîne d\'attaque évidente détectée entre les findings.';
+    }
+
+    let output = '';
+    for (const chain of chains) {
+      output += `**${chain.name}** [Impact: ${chain.impact}]\n\n`;
+      for (const step of chain.steps) {
+        output += `${step}\n`;
+      }
+      output += '\n';
+    }
+
+    return output;
   }
 
   assessOverallRisk(context) {

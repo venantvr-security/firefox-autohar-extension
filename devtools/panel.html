@@ -921,17 +921,20 @@
       border-radius: 2px;
     }
   </style>
+  <link rel="stylesheet" href="styles/help.css">
 </head>
 <body>
   <div class="header">
     <h1>
       <span class="status-indicator" id="statusIndicator"></span>
       PentestHAR
+      <small>v2.1.0</small>
     </h1>
     <div class="controls">
       <button id="btnToggle" class="btn-success">Start</button>
-      <button id="btnSaveNow" class="btn-primary">Save HAR</button>
-      <button id="btnClear" class="btn-secondary">Clear</button>
+      <button id="btnSaveNow" class="btn-primary">Sauvegarder</button>
+      <button id="btnClear" class="btn-secondary">Effacer</button>
+      <button id="btnHelp" class="help-btn" title="Aide (? ou F1)">?</button>
     </div>
   </div>
 
@@ -1035,8 +1038,8 @@
     <div class="findings-list" id="findingsList">
       <div class="empty-state">
         <div class="empty-state-icon">🔒</div>
-        <div>No security findings yet</div>
-        <div style="font-size:10px;margin-top:8px">Start capturing to analyze security issues</div>
+        <div>Aucune découverte de sécurité</div>
+        <div style="font-size:10px;margin-top:8px">Cliquez sur Start puis naviguez sur le site cible pour détecter les vulnérabilités</div>
       </div>
     </div>
   </div>
@@ -1044,7 +1047,7 @@
   <!-- Endpoints Tab -->
   <div class="tab-content" id="endpointsTab">
     <div class="endpoints-toolbar">
-      <input type="text" id="endpointSearch" placeholder="Search endpoints...">
+      <input type="text" id="endpointSearch" placeholder="Rechercher des endpoints...">
       <select id="methodFilter">
         <option value="">All Methods</option>
         <option value="GET">GET</option>
@@ -1080,7 +1083,8 @@
     <div class="endpoints-list" id="endpointsList">
       <div class="empty-state">
         <div class="empty-state-icon">🌐</div>
-        <div>No endpoints captured yet</div>
+        <div>Aucun endpoint capturé</div>
+        <div style="font-size:10px;margin-top:8px">Les APIs découvertes apparaîtront ici automatiquement</div>
       </div>
     </div>
   </div>
@@ -1135,6 +1139,10 @@
         <button class="ai-quick-btn" id="aiExportChunked">
           <div class="btn-title">📦 Export Chunked</div>
           <div class="btn-desc">Données découpées par contexte IA</div>
+        </button>
+        <button class="ai-quick-btn" id="aiExportStructured">
+          <div class="btn-title">🔬 Format Structuré</div>
+          <div class="btn-desc">JSON + Markdown hybride optimisé LLM</div>
         </button>
       </div>
     </div>
@@ -1224,10 +1232,17 @@
   <script src="security/SecurityHeaderChecker.js"></script>
   <script src="security/EndpointExtractor.js"></script>
   <script src="security/ExportManager.js"></script>
+  <script src="security/InjectionDetector.js"></script>
+  <script src="security/JWTAnalyzer.js"></script>
   <script src="security/SecurityAnalyzer.js"></script>
   <script src="security/PromptTemplateStore.js"></script>
   <script src="security/OpenAPIGenerator.js"></script>
+  <script src="security/RiskScorer.js"></script>
   <script src="security/AIExportManager.js"></script>
+
+  <!-- Load help system -->
+  <script src="help/HelpSystem.js"></script>
+
   <script src="panel.js"></script>
 </body>
 </html>

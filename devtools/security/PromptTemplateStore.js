@@ -270,6 +270,295 @@ Pour chaque quick win:
 Ordonne par ratio effort/impact (meilleur en premier).`,
         isDefault: true,
         createdAt: Date.now()
+      },
+      {
+        id: 'structured-analysis',
+        name: 'Analyse Structurée (JSON+MD)',
+        category: 'recon',
+        description: 'Analyse avec données structurées JSON pour parsing facile',
+        prompt: `# Analyse Structurée - {{target}}
+
+## Métadonnées
+\`\`\`json
+{
+  "target": "{{target}}",
+  "duration": "{{session_duration}}",
+  "requests": {{request_count}},
+  "endpoints": {{endpoints_count}},
+  "riskLevel": "À déterminer"
+}
+\`\`\`
+
+## Surface d'Attaque
+{{endpoints}}
+
+## Findings
+- Secrets: {{secrets}}
+- IDOR: {{idor_candidates}}
+- Issues: {{security_issues}}
+
+## Demande
+
+Analyse ces données et génère un rapport JSON structuré avec:
+
+\`\`\`json
+{
+  "riskScore": 0-10,
+  "criticalFindings": [],
+  "attackVectors": [],
+  "recommendations": [],
+  "exploitability": "low|medium|high"
+}
+\`\`\`
+
+Ensuite, explique en français chaque élément du JSON.`,
+        isDefault: true,
+        createdAt: Date.now()
+      },
+      {
+        id: 'conversational-deep-dive',
+        name: 'Deep Dive Conversationnel',
+        category: 'offensive',
+        description: 'Format question-réponse pour analyse approfondie',
+        prompt: `# 🤖 Session d'Analyse Sécurité - {{target}}
+
+## 👤 Ton Rôle
+Tu es un expert OSCP/OSWE avec 10 ans d'expérience en pentest web.
+Tu analyses le trafic capturé pour identifier des vulnérabilités exploitables.
+
+## 📦 Données Capturées
+- **Durée**: {{session_duration}}
+- **Requêtes**: {{request_count}}
+- **Endpoints**: {{endpoints_count}}
+- **Secrets**: Détectés (voir ci-dessous)
+- **IDOR**: Candidats identifiés
+
+### Findings Automatiques
+{{security_issues}}
+{{secrets}}
+{{idor_candidates}}
+
+## ❓ Questions pour Toi
+
+### Q1: Priorisation Intelligente
+Parmi TOUS les findings détectés, lesquels dois-je exploiter en PREMIER ?
+Crée un classement par **ratio impact/effort** :
+- Impact: 0-10 (données exposées, business impact)
+- Effort: 0-10 (compétence requise, prérequis, temps)
+- Ratio: Impact/Effort (plus élevé = meilleur)
+
+Format: Tableau markdown avec colonnes [Finding, Impact, Effort, Ratio, Ordre]
+
+### Q2: Attack Chain
+Peux-tu **construire un scénario d'attaque complet** en enchaînant plusieurs vulnérabilités ?
+
+Format attendu:
+1. **Étape 1**: Action précise → Résultat obtenu
+2. **Étape 2**: Action suivante → Nouveau résultat
+3. **Étape 3**: ...
+4. **Impact final**: Ce qu'un attaquant obtient
+
+### Q3: Exploitation Technique
+Pour les 3 findings les plus critiques, donne-moi:
+1. **Commande curl/script exact** pour exploiter
+2. **Indicateurs de succès** (status code, contenu réponse)
+3. **Post-exploitation** (que faire avec l'accès obtenu)
+
+### Q4: Blind Spots
+Quelles vulnérabilités **NE PEUVENT PAS** être détectées par analyse passive ?
+Liste ce que je devrais tester manuellement ensuite.
+
+### Q5: Rapport Professionnel
+Rédige un **rapport HackerOne** pour la vulnérabilité #1 (la plus critique).
+Format:
+- **Titre**: Concis et descriptif
+- **Sévérité**: CVSS score avec justification
+- **Description**: 2-3 phrases
+- **Steps to Reproduce**: Numérotées, détaillées
+- **Impact**: Business impact concret
+- **Remediation**: Fix suggéré
+- **References**: CWE, OWASP
+
+---
+
+## 📊 Données Brutes
+
+<details>
+<summary>Endpoints Complets</summary>
+
+{{endpoints}}
+</details>
+
+<details>
+<summary>Paramètres</summary>
+
+{{parameters}}
+</details>`,
+        isDefault: true,
+        createdAt: Date.now()
+      },
+      {
+        id: 'exploit-ready',
+        name: 'Exploitation Ready',
+        category: 'offensive',
+        description: 'Focus sur l\'exploitation immédiate avec commandes',
+        prompt: `# ⚔️ Exploitation Guide - {{target}}
+
+## 🎯 Cible
+- **Domain**: {{target}}
+- **Session**: {{session_duration}}
+- **Findings détectés**: Voir ci-dessous
+
+## 🔍 Findings
+
+### Secrets Exposés
+{{secrets}}
+
+### IDOR Candidates
+{{idor_candidates}}
+
+### JWT Tokens
+{{jwt_decoded}}
+
+### Issues
+{{security_issues}}
+
+## 🚀 Demande: Génère un Guide d'Exploitation
+
+Pour CHAQUE finding, fournis:
+
+### Format:
+\`\`\`
+Finding: [Nom du finding]
+Sévérité: [Critical/High/Medium]
+Temps: [< 5min | < 30min | < 2h]
+
+# Étape 1: Vérification
+curl [commande exacte]
+# Résultat attendu: [ce qu'on doit voir]
+
+# Étape 2: Exploitation
+[Commande ou script exact]
+# Résultat attendu: [données exfiltrées, accès obtenu]
+
+# Étape 3: Post-Exploitation
+[Que faire avec l'accès]
+
+# Défense/Mitigation
+[Comment l'équipe dev devrait corriger]
+\`\`\`
+
+**IMPORTANT**: Toutes les commandes doivent être **copy-paste ready** (pas de placeholder, utilise les vraies URLs/endpoints détectés).`,
+        isDefault: true,
+        createdAt: Date.now()
+      },
+      {
+        id: 'risk-scoring',
+        name: 'Scoring CVSS Automatique',
+        category: 'prioritization',
+        description: 'Calcul de scores CVSS v3 pour priorisation',
+        prompt: `# 📊 Scoring CVSS - {{target}}
+
+## Findings Détectés
+
+### Secrets
+{{secrets}}
+
+### IDOR
+{{idor_candidates}}
+
+### Issues Sécurité
+{{security_issues}}
+
+## Demande: Calcule les Scores CVSS v3.1
+
+Pour CHAQUE finding, calcule le score CVSS v3.1 en détaillant:
+
+### Format:
+\`\`\`
+Finding: [Nom]
+
+CVSS Vector: CVSS:3.1/AV:[N/A/L/P]/AC:[L/H]/PR:[N/L/H]/UI:[N/R]/S:[U/C]/C:[N/L/H]/I:[N/L/H]/A:[N/L/H]
+
+Justification:
+- AV (Attack Vector): [Justification]
+- AC (Attack Complexity): [Justification]
+- PR (Privileges Required): [Justification]
+- UI (User Interaction): [Justification]
+- S (Scope): [Justification]
+- C (Confidentiality): [Justification]
+- I (Integrity): [Justification]
+- A (Availability): [Justification]
+
+Score Base: X.X (Critical/High/Medium/Low)
+Score Temporel: X.X
+Score Environnemental: X.X
+
+Priorité: P0/P1/P2/P3
+Timeline: < 24h | < 7j | < 30j
+\`\`\`
+
+Ensuite, classe tous les findings par score décroissant.`,
+        isDefault: true,
+        createdAt: Date.now()
+      },
+      {
+        id: 'compliance-check',
+        name: 'Audit Compliance (RGPD/PCI)',
+        category: 'reporting',
+        description: 'Vérification conformité RGPD, PCI-DSS, ISO 27001',
+        prompt: `# ⚖️ Audit Compliance - {{target}}
+
+## Données Analysées
+- **Secrets**: {{secrets}}
+- **Cookies**: {{cookies_issues}}
+- **Headers**: {{headers_issues}}
+- **Endpoints**: {{endpoints}}
+
+## Demande: Audit de Conformité
+
+Analyse la conformité par rapport à:
+
+### 1. RGPD (Règlement Général sur la Protection des Données)
+- [ ] Cookies sécurisés (Secure, HttpOnly, SameSite)
+- [ ] Chiffrement des données en transit (HTTPS)
+- [ ] Pas de fuite de PII dans les logs/responses
+- [ ] Consentement cookies (si applicable)
+
+**Findings RGPD**:
+[Liste les violations détectées]
+
+### 2. PCI-DSS (Payment Card Industry Data Security Standard)
+- [ ] Pas de secrets/clés API en clair
+- [ ] Headers de sécurité (CSP, HSTS)
+- [ ] Chiffrement fort (TLS 1.2+)
+- [ ] Pas de données bancaires en logs
+
+**Findings PCI-DSS**:
+[Liste les violations]
+
+### 3. ISO 27001 (Security Management)
+- [ ] Gestion des secrets appropriée
+- [ ] Contrôle d'accès (pas d'IDOR)
+- [ ] Logging et monitoring
+- [ ] Authentification sécurisée
+
+**Findings ISO 27001**:
+[Liste les violations]
+
+## Rapport de Conformité
+
+Génère un tableau:
+
+| Standard | Conforme | Findings | Sévérité | Action |
+|----------|----------|----------|----------|--------|
+| RGPD | ✅/❌ | [N] | Critical/High/Medium | [Action] |
+| PCI-DSS | ✅/❌ | [N] | Critical/High/Medium | [Action] |
+| ISO 27001 | ✅/❌ | [N] | Critical/High/Medium | [Action] |
+
+**Score Global de Conformité**: X/100`,
+        isDefault: true,
+        createdAt: Date.now()
       }
     ];
 

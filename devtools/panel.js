@@ -47,6 +47,7 @@ class AutoHARCapture {
       btnToggle: document.getElementById('btnToggle'),
       btnSaveNow: document.getElementById('btnSaveNow'),
       btnClear: document.getElementById('btnClear'),
+      btnHelp: document.getElementById('btnHelp'),
 
       // Capture stats
       requestCount: document.getElementById('requestCount'),
@@ -178,6 +179,15 @@ class AutoHARCapture {
     this.elements.btnSaveNow.addEventListener('click', () => this.saveHAR());
     this.elements.btnClear.addEventListener('click', () => this.clearCapture());
 
+    // Bouton d'aide - ouvre le drawer d'aide
+    if (this.elements.btnHelp) {
+      this.elements.btnHelp.addEventListener('click', () => {
+        if (typeof helpSystem !== 'undefined') {
+          helpSystem.toggleDrawer();
+        }
+      });
+    }
+
     // Settings
     this.elements.maxSize.addEventListener('change', (e) => {
       this.settings.maxSizeMB = parseInt(e.target.value) || 5;
@@ -245,6 +255,10 @@ class AutoHARCapture {
     this.elements.aiExportScenarios.addEventListener('click', () => this.aiDoExport('scenarios'));
     this.elements.aiExportOpenAPI.addEventListener('click', () => this.aiDoExport('openapi'));
     this.elements.aiExportChunked.addEventListener('click', () => this.aiDoExport('chunked'));
+    this.elements.aiExportStructured = document.getElementById('aiExportStructured');
+    if (this.elements.aiExportStructured) {
+      this.elements.aiExportStructured.addEventListener('click', () => this.aiDoExport('structured'));
+    }
 
     // Category pills
     this.elements.categoryPills.addEventListener('click', (e) => {
@@ -902,6 +916,10 @@ class AutoHARCapture {
         const chunks = this.aiExportManager.generateChunkedExport();
         content = chunks.map(c => `# ${c.title}\n\n${c.content}`).join('\n\n---\n\n');
         filename = `chunked-export-${timestamp}.md`;
+        break;
+      case 'structured':
+        content = this.aiExportManager.generateStructuredBrief();
+        filename = `structured-brief-${timestamp}.md`;
         break;
     }
 
